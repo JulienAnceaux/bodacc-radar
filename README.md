@@ -1,4 +1,4 @@
-# Domus BODACC Radar
+# BODACC Radar
 
 Radar de veille des procédures collectives (BODACC) pour repérer les locaux commerciaux susceptibles de se libérer, avant publication sur les portails immobiliers.
 
@@ -36,4 +36,4 @@ npm run dev
 React · Vite · PapaParse · Lucide React · API publique BODACC (DILA / opendatasoft)
 
 ---
-Domus VirtualImmo — pipeline de détection vendeurs
+Pipeline de détection vendeurs
