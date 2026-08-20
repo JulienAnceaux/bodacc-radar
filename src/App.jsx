@@ -1,8 +1,6 @@
-import React, { useState, useMemo, useCallback } from "react";
-import Papa from "papaparse";
-import { Upload, AlertTriangle, MapPin, Download, X, ChevronDown } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { Search, AlertTriangle, MapPin, Download, Loader2 } from "lucide-react";
 
-// --- Zone Domus : départements couverts par le pipeline de scoring local ---
 const ZONE_DOMUS = new Set(["95", "78", "60"]);
 
 const PROCEDURE_STYLES = {
@@ -13,9 +11,7 @@ const PROCEDURE_STYLES = {
 };
 
 function styleFor(type) {
-  return (
-    PROCEDURE_STYLES[type] || { color: "#7A756B", label: type || "Autre" }
-  );
+  return PROCEDURE_STYLES[type] || { color: "#7A756B", label: type || "Autre" };
 }
 
 function urgenceLabel(u) {
@@ -25,54 +21,61 @@ function urgenceLabel(u) {
 }
 
 export default function BodaccExplorer() {
-  const [rows, setRows] = useState([]);
-  const [fileName, setFileName] = useState("");
-  const [error, setError] = useState("");
+  const [villeInput, setVilleInput] = useState("");
+  const [searchedVille, setSearchedVille] = useState("");
+  const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const [zoneFilter, setZoneFilter] = useState("domus"); // "domus" | "all"
   const [typeFilters, setTypeFilters] = useState(
     new Set(["Liquidation judiciaire", "Redressement judiciaire", "Sauvegarde", "Plan de cession"])
   );
   const [search, setSearch] = useState("");
-  const [visibleCount, setVisibleCount] = useState(60);
 
-  const handleFile = useCallback((file) => {
-    if (!file) return;
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    const ville = villeInput.trim();
+    if (ville.length < 2) return;
+
     setLoading(true);
     setError("");
-    setFileName(file.name);
-    Papa.parse(file, {
-      header: true,
-      delimiter: ";",
-      skipEmptyLines: true,
-      complete: (res) => {
-        const cleaned = res.data
-          .filter((r) => r.id)
-          .map((r) => ({ ...r, urgence: Number(r.urgence) || 1 }));
-        setRows(cleaned);
-        setLoading(false);
-        setVisibleCount(60);
-      },
-      error: (err) => {
-        setError("Erreur de lecture du fichier : " + err.message);
-        setLoading(false);
-      },
-    });
-  }, []);
+
+    try {
+      const res = await fetch("/api/bodacc-search?ville=" + encodeURIComponent(ville));
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Une erreur est survenue.");
+        setResults(null);
+      } else {
+        setResults(data.results);
+        setSearchedVille(data.ville);
+        setSearch("");
+      }
+    } catch {
+      setError("Impossible de contacter le serveur. Réessaie dans un instant.");
+      setResults(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const newSearch = () => {
+    setResults(null);
+    setSearchedVille("");
+    setVilleInput("");
+    setError("");
+  };
 
   const allTypes = useMemo(() => {
-    const s = new Set(rows.map((r) => r.typeProcedure).filter(Boolean));
-    return Array.from(s).sort(
-      (a, b) => (styleFor(b).color === "#B4432C" ? 1 : 0) - (styleFor(a).color === "#B4432C" ? 1 : 0)
-    );
-  }, [rows]);
+    if (!results) return [];
+    const s = new Set(results.map((r) => r.typeProcedure).filter(Boolean));
+    return Array.from(s);
+  }, [results]);
 
   const filtered = useMemo(() => {
-    let out = rows;
-    if (zoneFilter === "domus") {
-      out = out.filter((r) => ZONE_DOMUS.has(r.departement));
-    }
+    if (!results) return [];
+    let out = results;
     if (typeFilters.size > 0) {
       out = out.filter((r) => typeFilters.has(r.typeProcedure));
     }
@@ -81,21 +84,11 @@ export default function BodaccExplorer() {
       out = out.filter(
         (r) =>
           (r.denomination || "").toLowerCase().includes(q) ||
-          (r.activite || "").toLowerCase().includes(q) ||
-          (r.ville || "").toLowerCase().includes(q) ||
-          (r.codePostal || "").includes(q)
+          (r.activite || "").toLowerCase().includes(q)
       );
     }
-    return [...out].sort((a, b) => {
-      if (b.urgence !== a.urgence) return b.urgence - a.urgence;
-      return (b.dateParution || "").localeCompare(a.dateParution || "");
-    });
-  }, [rows, zoneFilter, typeFilters, search]);
-
-  const stats = useMemo(() => {
-    const domusCount = rows.filter((r) => ZONE_DOMUS.has(r.departement)).length;
-    return { total: rows.length, domus: domusCount, national: rows.length - domusCount };
-  }, [rows]);
+    return out;
+  }, [results, typeFilters, search]);
 
   const toggleType = (t) => {
     setTypeFilters((prev) => {
@@ -107,28 +100,18 @@ export default function BodaccExplorer() {
 
   const exportCsv = () => {
     const headers = [
-      "typeProcedure",
-      "urgence",
-      "denomination",
-      "siren",
-      "activite",
-      "adresse",
-      "codePostal",
-      "ville",
-      "departement",
-      "dateParution",
-      "tribunal",
-      "urlComplete",
+      "typeProcedure", "urgence", "denomination", "siren", "activite",
+      "adresse", "codePostal", "ville", "departement", "dateParution", "tribunal", "urlComplete",
     ];
     const lines = [headers.join(";")];
     filtered.forEach((r) => {
-      lines.push(headers.map((h) => `"${String(r[h] ?? "").replace(/"/g, '""')}"`).join(";"));
+      lines.push(headers.map((h) => '"' + String(r[h] ?? "").replace(/"/g, '""') + '"').join(";"));
     });
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "bodacc_filtre.csv";
+    a.download = "bodacc_" + searchedVille.toLowerCase().replace(/\s+/g, "-") + ".csv";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -143,59 +126,63 @@ export default function BodaccExplorer() {
             Procédures collectives — repérage des locaux commerciaux susceptibles de se
             libérer, avant publication sur les portails.
           </p>
+
+          <form onSubmit={handleSearch} style={styles.searchForm}>
+            <input
+              type="text"
+              value={villeInput}
+              onChange={(e) => setVilleInput(e.target.value)}
+              placeholder="Nom d'une ville (ex : Pontoise)"
+              style={styles.searchInput}
+              autoFocus
+            />
+            <button type="submit" style={styles.searchBtn} disabled={loading}>
+              {loading ? (
+                <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
+              ) : (
+                <Search size={15} />
+              )}
+              Rechercher
+            </button>
+          </form>
+          {error && (
+            <p style={styles.headerError}>
+              <AlertTriangle size={13} style={{ marginRight: 5, verticalAlign: -2 }} />
+              {error}
+            </p>
+          )}
         </div>
       </header>
 
       <main style={styles.main}>
-        {rows.length === 0 ? (
-          <UploadZone onFile={handleFile} loading={loading} error={error} />
+        {results === null ? (
+          <div style={styles.empty}>
+            {loading ? "Recherche en cours…" : "Tape le nom d'une ville pour lancer la recherche."}
+          </div>
         ) : (
           <>
             <div style={styles.toolbar}>
               <div style={styles.statsRow}>
-                <StatBlock label="Annonces chargées" value={stats.total} />
-                <StatBlock label="Zone Domus (95·78·60)" value={stats.domus} accent="#3D6B5C" />
-                <StatBlock label="Hors zone" value={stats.national} accent="#7A756B" />
-                <div style={{ marginLeft: "auto", fontSize: 12, color: "#7A756B", alignSelf: "center" }}>
-                  {fileName}
+                <StatBlock label={'Résultats pour "' + searchedVille + '"'} value={results.length} />
+                <button onClick={newSearch} style={styles.newSearchBtn}>
+                  ← Nouvelle recherche
+                </button>
+                <div style={{ marginLeft: "auto" }}>
+                  <button onClick={exportCsv} style={styles.exportBtn}>
+                    <Download size={13} style={{ marginRight: 6, verticalAlign: -2 }} />
+                    Exporter ({filtered.length})
+                  </button>
                 </div>
               </div>
 
               <div style={styles.filterRow}>
-                <div style={styles.zoneToggle}>
-                  <button
-                    onClick={() => setZoneFilter("domus")}
-                    style={{
-                      ...styles.zoneBtn,
-                      ...(zoneFilter === "domus" ? styles.zoneBtnActive : {}),
-                    }}
-                  >
-                    <MapPin size={13} style={{ marginRight: 5, verticalAlign: -2 }} />
-                    Zone Domus
-                  </button>
-                  <button
-                    onClick={() => setZoneFilter("all")}
-                    style={{
-                      ...styles.zoneBtn,
-                      ...(zoneFilter === "all" ? styles.zoneBtnActive : {}),
-                    }}
-                  >
-                    France entière
-                  </button>
-                </div>
-
                 <input
                   type="text"
-                  placeholder="Chercher une enseigne, une activité, une ville…"
+                  placeholder="Filtrer par enseigne ou activité…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   style={styles.search}
                 />
-
-                <button onClick={exportCsv} style={styles.exportBtn}>
-                  <Download size={13} style={{ marginRight: 6, verticalAlign: -2 }} />
-                  Exporter ({filtered.length})
-                </button>
               </div>
 
               <div style={styles.typeRow}>
@@ -210,7 +197,7 @@ export default function BodaccExplorer() {
                         ...styles.typeChip,
                         borderColor: active ? st.color : "#DDD8CC",
                         color: active ? st.color : "#A8A296",
-                        background: active ? `${st.color}14` : "transparent",
+                        background: active ? st.color + "14" : "transparent",
                       }}
                     >
                       {t}
@@ -222,21 +209,13 @@ export default function BodaccExplorer() {
 
             <div style={styles.tableWrap}>
               {filtered.length === 0 ? (
-                <div style={styles.empty}>Aucune annonce ne correspond à ces filtres.</div>
+                <div style={styles.empty}>
+                  {results.length === 0
+                    ? "Aucune procédure collective trouvée pour cette ville."
+                    : "Aucune annonce ne correspond à ces filtres."}
+                </div>
               ) : (
-                <>
-                  {filtered.slice(0, visibleCount).map((r) => (
-                    <Row key={r.id} r={r} />
-                  ))}
-                  {visibleCount < filtered.length && (
-                    <button
-                      onClick={() => setVisibleCount((v) => v + 60)}
-                      style={styles.loadMore}
-                    >
-                      Afficher plus ({filtered.length - visibleCount} restantes)
-                    </button>
-                  )}
-                </>
+                filtered.map((r) => <Row key={r.id} r={r} />)
               )}
             </div>
           </>
@@ -268,7 +247,10 @@ function Row({ r }) {
           {r.typeProcedure} · {r.ville} ({r.codePostal}) · {r.dateParution}
         </div>
         {r.activite && r.activite !== "Non précisé" && (
-          <div style={styles.rowActivite}>{r.activite.slice(0, 140)}{r.activite.length > 140 ? "…" : ""}</div>
+          <div style={styles.rowActivite}>
+            {r.activite.slice(0, 140)}
+            {r.activite.length > 140 ? "…" : ""}
+          </div>
         )}
       </div>
       <div style={styles.rowSiren}>{r.siren}</div>
@@ -276,56 +258,11 @@ function Row({ r }) {
   );
 }
 
-function StatBlock({ label, value, accent = "#2A2620" }) {
+function StatBlock({ label, value, accent = "#F6F4EE" }) {
   return (
     <div style={styles.statBlock}>
-      <div style={{ ...styles.statValue, color: accent }}>{value.toLocaleString("fr-FR")}</div>
+      <div style={{ ...styles.statValue, color: "#2A2620" }}>{value.toLocaleString("fr-FR")}</div>
       <div style={styles.statLabel}>{label}</div>
-    </div>
-  );
-}
-
-function UploadZone({ onFile, loading, error }) {
-  const [dragOver, setDragOver] = useState(false);
-  return (
-    <div
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDragOver(true);
-      }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setDragOver(false);
-        onFile(e.dataTransfer.files?.[0]);
-      }}
-      style={{
-        ...styles.dropzone,
-        borderColor: dragOver ? "#3D6B5C" : "#DDD8CC",
-        background: dragOver ? "#3D6B5C0A" : "#FBFAF6",
-      }}
-    >
-      <Upload size={28} color="#7A756B" />
-      <p style={styles.dropTitle}>Charge le CSV BODACC</p>
-      <p style={styles.dropSub}>
-        Fichier généré par <code style={styles.code}>bodacc_fetch.js</code> — séparateur point-virgule.
-      </p>
-      <label style={styles.fileLabel}>
-        Choisir un fichier
-        <input
-          type="file"
-          accept=".csv"
-          onChange={(e) => onFile(e.target.files?.[0])}
-          style={{ display: "none" }}
-        />
-      </label>
-      {loading && <p style={styles.loadingText}>Lecture en cours…</p>}
-      {error && (
-        <p style={styles.errorText}>
-          <AlertTriangle size={13} style={{ marginRight: 5, verticalAlign: -2 }} />
-          {error}
-        </p>
-      )}
     </div>
   );
 }
@@ -335,171 +272,66 @@ const FONT_MONO = "'IBM Plex Mono', 'SF Mono', 'Menlo', monospace";
 const FONT_BODY = "'Inter', -apple-system, 'Segoe UI', sans-serif";
 
 const styles = {
-  page: {
-    minHeight: "100vh",
-    background: "#F6F4EE",
-    fontFamily: FONT_BODY,
-    color: "#2A2620",
-  },
-  header: {
-    background: "#1E2A26",
-    color: "#F6F4EE",
-    padding: "28px 20px 24px",
-  },
+  page: { minHeight: "100vh", background: "#F6F4EE", fontFamily: FONT_BODY, color: "#2A2620" },
+  header: { background: "#1E2A26", color: "#F6F4EE", padding: "28px 20px 32px" },
   headerInner: { maxWidth: 880, margin: "0 auto" },
-  eyebrow: {
-    fontFamily: FONT_MONO,
-    fontSize: 11,
-    letterSpacing: "0.12em",
-    color: "#8FAFA0",
-    marginBottom: 8,
+  eyebrow: { fontFamily: FONT_MONO, fontSize: 11, letterSpacing: "0.12em", color: "#8FAFA0", marginBottom: 8 },
+  title: { fontFamily: FONT_DISPLAY, fontSize: 34, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" },
+  subtitle: { fontSize: 14, color: "#C9CFC9", marginTop: 8, maxWidth: 520, lineHeight: 1.5 },
+  searchForm: { display: "flex", gap: 10, marginTop: 22, maxWidth: 480 },
+  searchInput: {
+    flex: 1, padding: "12px 14px", border: "1px solid #3D4A45", borderRadius: 4,
+    fontSize: 15, background: "#28352F", color: "#F6F4EE", fontFamily: FONT_BODY,
   },
-  title: {
-    fontFamily: FONT_DISPLAY,
-    fontSize: 34,
-    fontWeight: 600,
-    margin: 0,
-    letterSpacing: "-0.01em",
+  searchBtn: {
+    display: "flex", alignItems: "center", gap: 7, padding: "12px 18px",
+    background: "#F6F4EE", color: "#1E2A26", border: "none", borderRadius: 4,
+    fontSize: 14, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", fontFamily: FONT_BODY,
   },
-  subtitle: {
-    fontSize: 14,
-    color: "#C9CFC9",
-    marginTop: 8,
-    maxWidth: 520,
-    lineHeight: 1.5,
-  },
+  headerError: { fontSize: 13, color: "#E8A99A", marginTop: 12, marginBottom: 0 },
   main: { maxWidth: 880, margin: "0 auto", padding: "20px 16px 60px" },
-  dropzone: {
-    border: "1.5px dashed #DDD8CC",
-    borderRadius: 4,
-    padding: "48px 24px",
-    textAlign: "center",
-    marginTop: 24,
-    transition: "all 0.15s ease",
-  },
-  dropTitle: { fontFamily: FONT_DISPLAY, fontSize: 18, margin: "14px 0 4px" },
-  dropSub: { fontSize: 13, color: "#7A756B", margin: 0 },
-  code: {
-    fontFamily: FONT_MONO,
-    background: "#EDEAE0",
-    padding: "1px 5px",
-    borderRadius: 3,
-    fontSize: 12,
-  },
-  fileLabel: {
-    display: "inline-block",
-    marginTop: 18,
-    padding: "9px 18px",
-    background: "#1E2A26",
-    color: "#F6F4EE",
-    borderRadius: 3,
-    fontSize: 13,
-    cursor: "pointer",
-    fontWeight: 500,
-  },
-  loadingText: { marginTop: 12, fontSize: 13, color: "#7A756B" },
-  errorText: { marginTop: 12, fontSize: 13, color: "#B4432C" },
-  toolbar: { marginTop: 22, marginBottom: 6 },
-  statsRow: { display: "flex", gap: 24, alignItems: "flex-end", marginBottom: 18 },
+  empty: { padding: "64px 0", textAlign: "center", color: "#7A756B", fontSize: 15 },
+  toolbar: { marginTop: 8, marginBottom: 6 },
+  statsRow: { display: "flex", gap: 20, alignItems: "center", marginBottom: 18, flexWrap: "wrap" },
   statBlock: {},
   statValue: { fontFamily: FONT_DISPLAY, fontSize: 26, lineHeight: 1 },
   statLabel: { fontSize: 11, color: "#7A756B", marginTop: 4, textTransform: "uppercase", letterSpacing: "0.04em" },
-  filterRow: { display: "flex", gap: 10, alignItems: "center", marginBottom: 12, flexWrap: "wrap" },
-  zoneToggle: {
-    display: "flex",
-    border: "1px solid #DDD8CC",
-    borderRadius: 3,
-    overflow: "hidden",
-    flexShrink: 0,
-  },
-  zoneBtn: {
-    padding: "7px 12px",
-    fontSize: 12.5,
-    background: "#FBFAF6",
-    border: "none",
-    cursor: "pointer",
-    color: "#7A756B",
-    fontFamily: FONT_BODY,
-  },
-  zoneBtnActive: { background: "#1E2A26", color: "#F6F4EE" },
-  search: {
-    flex: 1,
-    minWidth: 200,
-    padding: "8px 12px",
-    border: "1px solid #DDD8CC",
-    borderRadius: 3,
-    fontSize: 13,
-    fontFamily: FONT_BODY,
-    background: "#FBFAF6",
+  newSearchBtn: {
+    padding: "6px 12px", fontSize: 12.5, border: "1px solid #DDD8CC", borderRadius: 3,
+    background: "transparent", color: "#7A756B", cursor: "pointer", fontFamily: FONT_BODY,
   },
   exportBtn: {
-    padding: "8px 14px",
-    fontSize: 12.5,
-    border: "1px solid #1E2A26",
-    borderRadius: 3,
-    background: "transparent",
-    color: "#1E2A26",
-    cursor: "pointer",
-    fontFamily: FONT_BODY,
-    whiteSpace: "nowrap",
+    padding: "8px 14px", fontSize: 12.5, border: "1px solid #1E2A26", borderRadius: 3,
+    background: "transparent", color: "#1E2A26", cursor: "pointer", fontFamily: FONT_BODY, whiteSpace: "nowrap",
+  },
+  filterRow: { display: "flex", gap: 10, alignItems: "center", marginBottom: 12, flexWrap: "wrap" },
+  search: {
+    flex: 1, minWidth: 200, padding: "8px 12px", border: "1px solid #DDD8CC", borderRadius: 3,
+    fontSize: 13, fontFamily: FONT_BODY, background: "#FBFAF6",
   },
   typeRow: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 },
   typeChip: {
-    padding: "5px 10px",
-    fontSize: 11.5,
-    borderRadius: 20,
-    border: "1px solid",
-    cursor: "pointer",
-    fontFamily: FONT_BODY,
-    fontWeight: 500,
+    padding: "5px 10px", fontSize: 11.5, borderRadius: 20, border: "1px solid",
+    cursor: "pointer", fontFamily: FONT_BODY, fontWeight: 500,
   },
   tableWrap: { borderTop: "1px solid #DDD8CC" },
   row: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    padding: "13px 4px 13px 14px",
-    borderBottom: "1px solid #EAE7DC",
-    borderLeft: "3px solid",
-    textDecoration: "none",
-    color: "inherit",
+    display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+    padding: "13px 4px 13px 14px", borderBottom: "1px solid #EAE7DC", borderLeft: "3px solid",
+    textDecoration: "none", color: "inherit",
   },
   rowMain: { flex: 1, minWidth: 0 },
   rowTop: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
   denomination: { fontFamily: FONT_DISPLAY, fontSize: 15.5, fontWeight: 600 },
   zoneBadge: {
-    fontFamily: FONT_MONO,
-    fontSize: 9.5,
-    letterSpacing: "0.05em",
-    color: "#3D6B5C",
-    border: "1px solid #3D6B5C55",
-    borderRadius: 3,
-    padding: "1px 5px",
+    fontFamily: FONT_MONO, fontSize: 9.5, letterSpacing: "0.05em", color: "#3D6B5C",
+    border: "1px solid #3D6B5C55", borderRadius: 3, padding: "1px 5px",
   },
   urgenceBadge: {
-    fontFamily: FONT_MONO,
-    fontSize: 9.5,
-    letterSpacing: "0.05em",
-    border: "1px solid",
-    borderRadius: 3,
-    padding: "1px 5px",
+    fontFamily: FONT_MONO, fontSize: 9.5, letterSpacing: "0.05em", border: "1px solid",
+    borderRadius: 3, padding: "1px 5px",
   },
   rowMeta: { fontSize: 12, color: "#7A756B", marginTop: 3 },
   rowActivite: { fontSize: 11.5, color: "#A8A296", marginTop: 3, fontStyle: "italic" },
   rowSiren: { fontFamily: FONT_MONO, fontSize: 11, color: "#C9C4B8", flexShrink: 0 },
-  empty: { padding: "48px 0", textAlign: "center", color: "#7A756B", fontSize: 14 },
-  loadMore: {
-    display: "block",
-    width: "100%",
-    padding: "14px",
-    textAlign: "center",
-    background: "transparent",
-    border: "none",
-    borderTop: "1px solid #EAE7DC",
-    color: "#1E2A26",
-    fontSize: 13,
-    cursor: "pointer",
-    fontFamily: FONT_BODY,
-  },
 };
