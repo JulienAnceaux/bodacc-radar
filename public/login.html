@@ -6,98 +6,97 @@
 <title>Radar BODACC — Connexion</title>
 <style>
   * { box-sizing: border-box; }
-    body {
-        font-family: -apple-system, "Segoe UI", sans-serif;
-            background: #1E2A26;
-                color: #F6F4EE;
-                    display: flex;
-                        align-items: center;
-                            justify-content: center;
-                                height: 100vh;
-                                    margin: 0;
-                                      }
-                                        form {
-                                            background: #F6F4EE;
-                                                color: #2A2620;
-                                                    padding: 32px;
-                                                        border-radius: 6px;
-                                                            width: 280px;
-                                                              }
-                                                                h1 {
-                                                                    font-family: Georgia, serif;
-                                                                        font-size: 20px;
-                                                                            margin: 0 0 4px;
-                                                                              }
-                                                                                p {
-                                                                                    font-size: 13px;
-                                                                                        color: #7A756B;
-                                                                                            margin: 0 0 18px;
-                                                                                              }
-                                                                                                input {
-                                                                                                    width: 100%;
-                                                                                                        padding: 10px;
-                                                                                                            margin-bottom: 12px;
-                                                                                                                border: 1px solid #DDD8CC;
-                                                                                                                    border-radius: 3px;
-                                                                                                                        font-size: 14px;
-                                                                                                                          }
-                                                                                                                            button {
-                                                                                                                                width: 100%;
-                                                                                                                                    padding: 10px;
-                                                                                                                                        background: #1E2A26;
-                                                                                                                                            color: #F6F4EE;
-                                                                                                                                                border: none;
-                                                                                                                                                    border-radius: 3px;
-                                                                                                                                                        cursor: pointer;
-                                                                                                                                                            font-size: 14px;
-                                                                                                                                                              }
-                                                                                                                                                                button:disabled { opacity: 0.6; cursor: default; }
-                                                                                                                                                                  #error {
-                                                                                                                                                                      color: #B4432C;
-                                                                                                                                                                          font-size: 12.5px;
-                                                                                                                                                                              margin-top: 10px;
-                                                                                                                                                                                  display: none;
-                                                                                                                                                                                    }
-                                                                                                                                                                                    </style>
-                                                                                                                                                                                    </head>
-                                                                                                                                                                                    <body>
-                                                                                                                                                                                    <form id="loginForm">
-                                                                                                                                                                                      <h1>Radar BODACC</h1>
-                                                                                                                                                                                        <p>Domus VirtualImmo — accès protégé</p>
-                                                                                                                                                                                          <input type="password" id="password" placeholder="Mot de passe" autofocus required />
-                                                                                                                                                                                            <button type="submit">Se connecter</button>
-                                                                                                                                                                                              <div id="error">Mot de passe incorrect.</div>
-                                                                                                                                                                                              </form>
-                                                                                                                                                                                              <script>
-                                                                                                                                                                                                document.getElementById("loginForm").addEventListener("submit", async (e) => {
-                                                                                                                                                                                                    e.preventDefault();
-                                                                                                                                                                                                        const button = e.target.querySelector("button");
-                                                                                                                                                                                                            const errorEl = document.getElementById("error");
-                                                                                                                                                                                                                const password = document.getElementById("password").value;
-                                                                                                                                                                                                                
-                                                                                                                                                                                                                    button.disabled = true;
-                                                                                                                                                                                                                        errorEl.style.display = "none";
-                                                                                                                                                                                                                        
-                                                                                                                                                                                                                            try {
-                                                                                                                                                                                                                                  const res = await fetch("/api/login", {
-                                                                                                                                                                                                                                          method: "POST",
-                                                                                                                                                                                                                                                  headers: { "Content-Type": "application/json" },
-                                                                                                                                                                                                                                                          body: JSON.stringify({ password }),
-                                                                                                                                                                                                                                                                });
-                                                                                                                                                                                                                                                                
-                                                                                                                                                                                                                                                                      if (res.ok) {
-                                                                                                                                                                                                                                                                              const params = new URLSearchParams(window.location.search);
-                                                                                                                                                                                                                                                                                      window.location.href = params.get("redirect") || "/";
-                                                                                                                                                                                                                                                                                            } else {
-                                                                                                                                                                                                                                                                                                    errorEl.style.display = "block";
-                                                                                                                                                                                                                                                                                                            button.disabled = false;
-                                                                                                                                                                                                                                                                                                                  }
-                                                                                                                                                                                                                                                                                                                      } catch {
-                                                                                                                                                                                                                                                                                                                            errorEl.style.display = "block";
-                                                                                                                                                                                                                                                                                                                                  button.disabled = false;
-                                                                                                                                                                                                                                                                                                                                      }
-                                                                                                                                                                                                                                                                                                                                        });
-                                                                                                                                                                                                                                                                                                                                        </script>
-                                                                                                                                                                                                                                                                                                                                        </body>
-                                                                                                                                                                                                                                                                                                                                        </html>
-                                                                                                                                                                                                                                                                                                                                        
+  body {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    background: #1E2A26;
+    color: #F6F4EE;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+  }
+  form {
+    background: #F6F4EE;
+    color: #2A2620;
+    padding: 32px;
+    border-radius: 6px;
+    width: 280px;
+  }
+  h1 {
+    font-family: Georgia, serif;
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+  p {
+    font-size: 13px;
+    color: #7A756B;
+    margin: 0 0 18px;
+  }
+  input {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 12px;
+    border: 1px solid #DDD8CC;
+    border-radius: 3px;
+    font-size: 14px;
+  }
+  button {
+    width: 100%;
+    padding: 10px;
+    background: #1E2A26;
+    color: #F6F4EE;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button:disabled { opacity: 0.6; cursor: default; }
+  #error {
+    color: #B4432C;
+    font-size: 12.5px;
+    margin-top: 10px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<form id="loginForm">
+  <h1>Radar BODACC</h1>
+  <p>Accès protégé</p>
+  <input type="password" id="password" placeholder="Mot de passe" autofocus required />
+  <button type="submit">Se connecter</button>
+  <div id="error">Mot de passe incorrect.</div>
+</form>
+<script>
+  document.getElementById("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const button = e.target.querySelector("button");
+    const errorEl = document.getElementById("error");
+    const password = document.getElementById("password").value;
+
+    button.disabled = true;
+    errorEl.style.display = "none";
+
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+
+      if (res.ok) {
+        const params = new URLSearchParams(window.location.search);
+        window.location.href = params.get("redirect") || "/";
+      } else {
+        errorEl.style.display = "block";
+        button.disabled = false;
+      }
+    } catch {
+      errorEl.style.display = "block";
+      button.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
